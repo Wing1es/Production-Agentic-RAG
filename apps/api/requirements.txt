@@ -1,0 +1,13 @@
+fastapi
+pydantic
+uvicorn
+google-genai
+groq
+pydantic-settings
+qdrant-client
+fastembed
+langsmith
+instructor
+tenacity
+cohere
+langgraph

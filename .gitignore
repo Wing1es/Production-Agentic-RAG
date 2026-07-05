@@ -1,0 +1,7 @@
+.env
+/notebooks
+/data
+/.venv
+/.vscode
+/qdrant_storage
+.DS_Store

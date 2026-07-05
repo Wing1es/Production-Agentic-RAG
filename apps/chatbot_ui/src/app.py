@@ -1,0 +1,90 @@
+import requests
+import streamlit as st
+from chatbot_ui.core.config import config
+
+st.set_page_config(
+    page_title="Ecommerce Assitant",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+def api_call(method, url, **kwargs):
+
+    def _show_error_popup(message):
+        st.session_state["error_popup"] = {
+            "visible": True,
+            "message": message
+        }
+
+    try:
+        response = getattr(requests, method.lower())(url, **kwargs)
+
+        try:
+            response_data = response.json()
+        except requests.exceptions.JSONDecodeError:
+            response_data = {"message": "Invalid response format from server"}
+
+        if response.ok:
+            return True, response_data
+        
+        return False, response_data
+    
+    except requests.exceptions.ConnectionError:
+        _show_error_popup("Connection error. Please try again later.")
+        return False, {"message": "Connection error"}
+    
+    except requests.exceptions.Timeout:
+        _show_error_popup("Timeout error. Please try again later.")
+        return False, {"message": "Timeout error"}
+
+    except requests.exceptions.RequestException as e:
+        _show_error_popup(f"Error: {str(e)}")
+        return False, {"message": str(e)}
+
+if "messages" not in st.session_state:
+    st.session_state.messages = [{"role": "assistant", "content": "How can I help you today?"}]
+
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+if "used_context" not in st.session_state:
+    st.session_state.used_context = []
+
+with st.sidebar:
+    suggestions_tab, = st.tabs(["Suggestions"])
+
+    with suggestions_tab:
+        if st.session_state.used_context:
+            for idx, item in enumerate(st.session_state.used_context):
+                st.caption(item.get("description", "No description"))
+                if "image_url" in item:
+                    st.image(item["image_url"], width=250)
+                st.caption(f"Price: {item.get('price', 'N/A')} USD")
+                st.markdown("---")
+        else:
+            st.caption("No suggestions yet")
+
+if prompt := st.chat_input("Ask Anything"):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    with st.chat_message("assistant"):
+        success, response_data = api_call("POST", f"{config.API_URL}/rag/", json={
+            "query": prompt
+        })
+
+        if success:
+            reply = response_data.get("answer", "")
+            used_context = response_data.get("used_context", [])
+
+            st.session_state.used_context = used_context
+
+            st.markdown(reply)
+            st.session_state.messages.append({"role": "assistant", "content": reply})
+        else:
+            error_msg = response_data.get("message") or "Unknown error occurred"
+            st.error(error_msg)
+    
+    st.rerun()
