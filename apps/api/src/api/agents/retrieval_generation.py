@@ -143,7 +143,7 @@ def generate_answer(prompt):
         messages = [
             {"role": "system", "content": prompt}
         ],
-        model="meta-llama/llama-4-scout-17b-16e-instruct",
+        model="llama-3.3-70b-versatile",
         response_model=RAGResponse
     )
 
@@ -184,7 +184,7 @@ def rag_pipeline_wrapper(question, top_k=5):
     used_context = []
 
     for item in result.get("references", []):
-        payload = qdrant.scroll(
+        records, _ = qdrant.scroll(
             collection_name="Amazon-collection-01-hybrid-search",
             scroll_filter=Filter(
                 must=[
@@ -197,17 +197,19 @@ def rag_pipeline_wrapper(question, top_k=5):
             limit=1,
             with_payload=True,
             with_vectors=False
-        )[0][0].payload
+        )
 
-        image_url = payload.get("image")
-        price = payload.get("price")
+        if records:
+            payload = records[0].payload
+            image_url = payload.get("image")
+            price = payload.get("price")
 
-        if image_url: 
-            used_context.append({
-                "image_url": image_url,
-                "price": price,
-                "description": item.description
-            })
+            if image_url: 
+                used_context.append({
+                    "image_url": image_url,
+                    "price": price,
+                    "description": item.description
+                })
     
     return {
         "answer": result["answer"],

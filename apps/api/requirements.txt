@@ -11,3 +11,5 @@ instructor
 tenacity
 cohere
 langgraph
+psycopg[binary]
+langgraph-checkpoint-postgres

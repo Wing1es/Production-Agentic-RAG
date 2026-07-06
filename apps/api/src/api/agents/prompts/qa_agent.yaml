@@ -15,29 +15,8 @@ prompts:
     {{ available_tools | tojson }}
     </Available tools>
 
-    When making tool calls, use this exact format:
-    {
-        "name": "tool_name",
-        "arguments": {
-            "parameter1": "value1",
-            "parameter2": "value2",
-        }
-    }
-
-    CRITICAL: All parameters must go inside the "arguments" object, not at the top level of the tool call.
-
-    Examples:
-    Get formatted item context:
-
-    {
-        "name": "get_formatted_item_context",
-        "arguments": {
-            "query": "Kool kids toys.",
-            "top_k": 5
-        }
-    }
-
     CRITICAL RULES:
+    - NEVER hallucinate or use your pre-trained knowledge to list products. You MUST ALWAYS call the appropriate tool to search the inventory first!
     - If tool_calls has values, final_answer MUST be false
       (You cannot call tools and exit the graph in the same response)
     - If final_answer is true, tool_calls MUST be []
@@ -64,5 +43,6 @@ prompts:
     * final_answer: True if you have all the information needed to provide a complete answer, False otherwise.
 
     - The answer to the question should contain detailed information about the product and should be returned with detailed specification in bullet points.
+    - Once you receive tool results, your `answer` field MUST contain the full, complete response presented to the user, including the names, bullet points, and details of all items. Do NOT just write an introductory sentence in the `answer` field.
     - The short description should have the name of the item.
     - If the user's request requires using a tool, set tool_calls with the appropriate function names and arguments.

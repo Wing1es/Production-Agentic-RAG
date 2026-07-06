@@ -1,23 +1,24 @@
 from google import genai
 from qdrant_client import QdrantClient
 from qdrant_client.models import FieldCondition, MatchValue, Filter
+from langgraph.checkpoint.postgres import PostgresSaver
 
 from api.core.config import config
 from api.agents.models import State
 from api.agents.utils.utils import get_tool_description
-from api.agents.tools import get_formatted_context
+from api.agents.tools import get_formatted_context, get_formatted_review_context
 from api.agents.agents import agent_node, intent_router_node
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 
 def tool_router(state: State) -> str:
 
-    if state.final_answer:
-        return "end"
-    elif state.iteration > 2:
+    if state.iteration > 5:
         return "end"
     elif len(state.tool_calls) > 0:
         return "tools"
+    elif state.final_answer:
+        return "end"
     else:
         return "end"
     
@@ -30,7 +31,7 @@ def intent_router_conditional_edge(state: State):
 
 workflow = StateGraph(State)
 
-tools = [get_formatted_context]
+tools = [get_formatted_context, get_formatted_review_context]
 tool_node = ToolNode(tools)
 tool_desc = get_tool_description(tools)
 
@@ -42,30 +43,38 @@ workflow.add_edge(START, "intent")
 workflow.add_conditional_edges("intent", intent_router_conditional_edge, {"agent_node": "agent", "END": END})
 workflow.add_conditional_edges("agent", tool_router, {"tools": "tool_node", "end": END})
 workflow.add_edge("tool_node", "agent")
-workflow.add_edge("agent", END)
 
-graph = workflow.compile()
-
-def run_agent(question: str)->dict:
+def run_agent(question: str, thread_id: str)->dict:
     initial_state = {
-        "messages": [{"role": "user", "content": "question"}],
+        "messages": [{"role": "user", "content": question}],
         "available_tools": tool_desc,
-        "iterations": 0
+        "iteration": 0
     }
 
-    result = graph.invoke(initial_state)
+    run_config = {
+        "configurable": {
+            "thread_id": thread_id
+        }
+    }
+
+    with PostgresSaver.from_conn_string(
+        conn_string=config.POSTGRES_CONNECTION_STRING
+    ) as checkpointer:
+        graph = workflow.compile(checkpointer=checkpointer)
+        result = graph.invoke(initial_state, run_config)
+
     return result
 
-def agent_wrapper(question):
+def agent_wrapper(question: str, thread_id: str):
 
     qdrant = QdrantClient(url=config.QDRANT_URL)
 
-    result = run_agent(question)
+    result = run_agent(question, thread_id)
 
     used_context = []
 
     for item in result.get("references", []):
-        payload = qdrant.scroll(
+        records, _ = qdrant.scroll(
             collection_name="Amazon-collection-01-hybrid-search",
             scroll_filter=Filter(
                 must=[
@@ -78,19 +87,22 @@ def agent_wrapper(question):
             limit=1,
             with_payload=True,
             with_vectors=False
-        )[0][0].payload
+        )
 
-        image_url = payload.get("image")
-        price = payload.get("price")
+        if records:
+            payload = records[0].payload
+            image_url = payload.get("image")
+            price = payload.get("price")
 
-        if image_url: 
-            used_context.append({
-                "image_url": image_url,
-                "price": price,
-                "description": item.description
-            })
+            if image_url: 
+                used_context.append({
+                    "image_url": image_url,
+                    "price": price,
+                    "description": item.description
+                })
     
     return {
         "answer": result.get("answer", ""),
-        "used_context": used_context
+        "used_context": used_context,
+        "trace_id": result.get("trace_id", "")
     }
