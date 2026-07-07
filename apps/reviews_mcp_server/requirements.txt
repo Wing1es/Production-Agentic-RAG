@@ -1,0 +1,4 @@
+fastmcp
+uvicorn
+fastembed
+qdrant-client

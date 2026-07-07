@@ -1,7 +1,7 @@
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
-extraPaths = ["apps/api/src", "apps/chatbot_ui/src"]
+extraPaths = ["apps/api/src", "apps/chatbot_ui/src", "apps/items_mcp_server/src", "apps/reviews_mcp_server/src"]
 pythonVersion = "3.11"
 typeCheckingMode = "basic"
 include = ["apps"]

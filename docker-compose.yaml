@@ -48,3 +48,23 @@ services:
     restart: unless-stopped
     volumes:
       - ./postgress_data:/var/lib/postgresql/data
+
+  items-mcp-server:
+    build:
+      context: ./apps/items_mcp_server
+      dockerfile: Dockerfile
+    ports:
+      - 8001:8001
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  reviews-mcp-server:
+    build:
+      context: ./apps/reviews_mcp_server
+      dockerfile: Dockerfile
+    ports:
+      - 8002:8002
+    env_file:
+      - .env
+    restart: unless-stopped
