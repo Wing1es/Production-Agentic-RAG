@@ -21,7 +21,7 @@ def get_embedding(text, model=model):
     return list(model.embed([text]))[0]
 
 @traceable(
-    name="retrieve_context",
+    name="retrieve_items_context",
     run_type="retriever"
 )
 def retrieve_data(query: str, k: int = 2, query_type: str = "fusion"):
@@ -125,7 +125,7 @@ Returns:
 
 
 @traceable(
-    name="retrieve_context",
+    name="retrieve_review_context",
     run_type="retriever"
 )
 def retrieve_review_data(query: str, item_list: list, k: int = 2):

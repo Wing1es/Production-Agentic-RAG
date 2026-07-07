@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request, APIRouter
+from fastapi.responses import StreamingResponse
 from .models import RAGRequest, RAGResponse, RAGUsedContext
-from api.agents.graph import agent_wrapper
+from api.agents.graph import agent_wrapper, rag_agent_stream_wrapper
 from api.api.processors.submit_feedback import submit_feedback
 from api.api.models import FeedbackRequest, FeedbackResponse
 
@@ -21,18 +22,23 @@ rag_router = APIRouter()
 feedback_router = APIRouter()
 
 @rag_router.post("/")
-def chat(request: Request, payload: RAGRequest) -> RAGResponse:
+def chat(request: Request, payload: RAGRequest) -> StreamingResponse:
     logger.info(f"Received chat request: {payload}")
     
-    response = agent_wrapper(payload.query, payload.thread_id)
+    # response = agent_wrapper(payload.query, payload.thread_id)
 
-    logger.info(f"LLM Response: {response['answer']}")
-    return RAGResponse(
-        request_id=request.state.request_id, 
-        answer=response["answer"],
-        used_context=[RAGUsedContext(**item) for item in response["used_context"]],
-        trace_id=response["trace_id"]
+    # logger.info(f"LLM Response: {response['answer']}")
+
+    return StreamingResponse(
+        rag_agent_stream_wrapper(payload.query, payload.thread_id),
+        media_type="text/event-stream"
     )
+    # return RAGResponse(
+    #     request_id=request.state.request_id, 
+    #     answer=response["answer"],
+    #     used_context=[RAGUsedContext(**item) for item in response["used_context"]],
+    #     trace_id=response["trace_id"]
+    # )
 
 @feedback_router.post("/")
 def send_feedback(request: Request, payload: FeedbackRequest):

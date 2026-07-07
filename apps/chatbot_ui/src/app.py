@@ -1,3 +1,4 @@
+import json
 import uuid
 import requests
 import logging
@@ -40,6 +41,31 @@ def api_call(method, url, **kwargs):
             return True, response_data
         
         return False, response_data
+    
+    except requests.exceptions.ConnectionError:
+        _show_error_popup("Connection error. Please try again later.")
+        return False, {"message": "Connection error"}
+    
+    except requests.exceptions.Timeout:
+        _show_error_popup("Timeout error. Please try again later.")
+        return False, {"message": "Timeout error"}
+
+    except requests.exceptions.RequestException as e:
+        _show_error_popup(f"Error: {str(e)}")
+        return False, {"message": str(e)}
+
+def api_call_stream(method, url, **kwargs):
+
+    def _show_error_popup(message):
+        st.session_state["error_popup"] = {
+            "visible": True,
+            "message": message
+        }
+
+    try:
+        response = getattr(requests, method.lower())(url, **kwargs)
+
+        return response.iter_lines()
     
     except requests.exceptions.ConnectionError:
         _show_error_popup("Connection error. Please try again later.")
@@ -224,23 +250,58 @@ if prompt := st.chat_input("Ask Anything"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        success, response_data = api_call("POST", f"{config.API_URL}/rag/", json={
+        status_placeholder = st.empty()
+        message_placeholder = st.empty()
+
+        for line in api_call_stream("POST", f"{config.API_URL}/rag/", json={
             "query": prompt,
             "thread_id": session_id
-        })
+        }, stream=True, headers={"Accept": "text/event-stream"}):
 
-        if success:
-            reply = response_data.get("answer", "")
-            used_context = response_data.get("used_context", [])
-            trace_id = response_data.get("trace_id")
+            line_text = line.decode("utf-8")
 
-            st.session_state.used_context = used_context
-            st.session_state.trace_id = trace_id
+            if line_text.startswith("data: "):
+                data = line_text[6:]
+                
+                try:
+                    output = json.loads(data)
 
-            st.markdown(reply)
-            st.session_state.messages.append({"role": "assistant", "content": reply})
-        else:
-            error_msg = response_data.get("message") or "Unknown error occurred"
-            st.error(error_msg)
+                    if output["type"] == "final_answer":
+                        answer = output["data"]["answer"]
+                        used_context = output["data"]["used_context"]
+                        trace_id = output["data"]["trace_id"]
+                        
+                        st.session_state.messages.append({"role": "assistant", "content": answer})
+                        st.session_state.used_context = used_context
+                        st.session_state.trace_id = trace_id
+
+                        st.session_state.latest_feedback = None
+                        st.session_state.show_feedback_box = False
+                        st.session_state.feedback_submission_status = None
+
+                        status_placeholder.empty()
+                        message_placeholder.markdown(answer)
+                        break
+                except json.JSONDecodeError:
+                    status_placeholder.markdown(f"*{data}*")
+
+        # success, response_data = api_call("POST", f"{config.API_URL}/rag/", json={
+        #     "query": prompt,
+        #     "thread_id": session_id
+        # })
+
+        # if success:
+        #     reply = response_data.get("answer", "")
+        #     used_context = response_data.get("used_context", [])
+        #     trace_id = response_data.get("trace_id")
+
+        #     st.session_state.used_context = used_context
+        #     st.session_state.trace_id = trace_id
+
+        #     st.markdown(reply)
+        #     st.session_state.messages.append({"role": "assistant", "content": reply})
+        # else:
+        #     error_msg = response_data.get("message") or "Unknown error occurred"
+        #     st.error(error_msg)
     
     st.rerun()
