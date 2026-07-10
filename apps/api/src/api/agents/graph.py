@@ -46,6 +46,8 @@ def coordinator_agent_edge(state: State):
         return "product_qa_agent"
     elif state.coordinator_agent.next_agent in ("shopping_cart", "shopping_cart_agent"):
         return "shopping_cart_agent"
+    elif state.coordinator_agent.next_agent in ("warehouse_manager", "warehouse_manager_agent"):
+        return "warehouse_manager_agent"
     else:
         return "END"
 
