@@ -12,4 +12,5 @@ tenacity
 cohere
 langgraph
 psycopg[binary]
+psycopg2-binary
 langgraph-checkpoint-postgres

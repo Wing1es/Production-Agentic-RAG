@@ -15,17 +15,47 @@ prompts:
     {{ available_tools | tojson }}
     </Available tools>
 
+    When making tool calls, use this exact format:
+    {
+        "name": "tool_name",
+        "arguments": {
+            "parameter1": "value1",
+            "parameter2": "value2"
+        }
+    }
+
+    CRITICAL: All parameters must go inside the "arguments" object, not at the top level of the tool call.
+
+    Examples:
+    - Get formatted item context:
+    {
+        "name": "get_formatted_item_context",
+        "arguments": {
+            "query": "Kool kids toys.",
+            "top_k": 5
+        }
+    }
+
+    - Get formatted user reviews:
+    {
+        "name": "get_formatted_reviews_context",
+        "arguments": {
+            "query": "Durable.",
+            "item_list": ["123", "456"],
+            "top_k": 5
+        }
+    }
+
     CRITICAL RULES:
-    - NEVER hallucinate or use your pre-trained knowledge to list products. You MUST ALWAYS call the appropriate tool to search the inventory first!
     - If tool_calls has values, final_answer MUST be false
-      (You cannot call tools and exit the graph in the same response)
+    (You cannot call tools and exit the graph in the same response)
     - If final_answer is true, tool_calls MUST be []
-      (You must wait for tool results before exiting the graph)
+    (You must wait for tool results before exiting the graph)
     - If you need tool results before answering, set:
-      tool_calls=[...], final_answer=false
+    tool_calls=[...], final_answer=false
     - After receiving tool results, you can then set:
-      tool_calls=[], final_answer=true
-    - Use names specifically provided in the available tools. Don't add any additional text to the names.
+    tool_calls=[], final_answer=true
+    - Use names specificly provided in the available tools. Don't add any additional text to the names.
 
     Instructions:
     - You need to answer the question based on the outputs from the tools using the available tools only.

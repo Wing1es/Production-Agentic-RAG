@@ -64,8 +64,14 @@ def api_call_stream(method, url, **kwargs):
 
     try:
         response = getattr(requests, method.lower())(url, **kwargs)
-
-        return response.iter_lines()
+        if response.ok:
+            return True, response.iter_lines()
+        
+        try:
+            response_data = response.json()
+        except requests.exceptions.JSONDecodeError:
+            response_data = {"message": "Invalid response format from server"}
+        return False, response_data
     
     except requests.exceptions.ConnectionError:
         _show_error_popup("Connection error. Please try again later.")
@@ -108,6 +114,9 @@ if "messages" not in st.session_state:
 if "used_context" not in st.session_state:
     st.session_state.used_context = []
 
+if "shopping_cart" not in st.session_state:
+    st.session_state.shopping_cart = []
+
 if "latest_feedback" not in st.session_state:
     st.session_state.latest_feedback = None
 
@@ -121,7 +130,7 @@ if "trace_id" not in st.session_state:
     st.session_state.trace_id = None
 
 with st.sidebar:
-    suggestions_tab, = st.tabs(["Suggestions"])
+    suggestions_tab, shopping_cart_tab = st.tabs(["Suggestions", "Shopping Cart"])
 
     with suggestions_tab:
         if st.session_state.used_context:
@@ -133,6 +142,19 @@ with st.sidebar:
                 st.markdown("---")
         else:
             st.caption("No suggestions yet")
+    
+    with shopping_cart_tab:
+        if st.session_state.shopping_cart:
+            for idx, item in enumerate(st.session_state.shopping_cart):
+                st.caption(item.get("description", "No description"))
+                if "image_url" in item:
+                    st.image(item["image_url"], width=250)
+                st.caption(f"Price: {item.get('price', 'N/A')} {item.get('currency', 'USD')}")
+                st.caption(f"Quantity: {item.get('quantity', 'N/A')}")
+                st.caption(f"Total Price: {item.get('total_price', 'N/A')} {item.get('currency', 'USD')}")
+                st.divider()
+        else:
+            st.caption("No items in shopping cart")
 
 for idx, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
@@ -253,37 +275,45 @@ if prompt := st.chat_input("Ask Anything"):
         status_placeholder = st.empty()
         message_placeholder = st.empty()
 
-        for line in api_call_stream("POST", f"{config.API_URL}/rag/", json={
+        success, stream = api_call_stream("POST", f"{config.API_URL}/agent/", json={
             "query": prompt,
             "thread_id": session_id
-        }, stream=True, headers={"Accept": "text/event-stream"}):
+        }, stream=True, headers={"Accept": "text/event-stream"})
 
-            line_text = line.decode("utf-8")
+        if success:
+            for line in stream:
+                line_text = line.decode("utf-8")
 
-            if line_text.startswith("data: "):
-                data = line_text[6:]
-                
-                try:
-                    output = json.loads(data)
+                if line_text.startswith("data: "):
+                    data = line_text[6:]
+                    
+                    try:
+                        output = json.loads(data)
 
-                    if output["type"] == "final_answer":
-                        answer = output["data"]["answer"]
-                        used_context = output["data"]["used_context"]
-                        trace_id = output["data"]["trace_id"]
-                        
-                        st.session_state.messages.append({"role": "assistant", "content": answer})
-                        st.session_state.used_context = used_context
-                        st.session_state.trace_id = trace_id
+                        if output["type"] == "final_answer":
+                            answer = output["data"]["answer"]
+                            used_context = output["data"]["used_context"]
+                            shopping_cart = output["data"]["shopping_cart"]
+                            trace_id = output["data"]["trace_id"]
+                            
+                            st.session_state.messages.append({"role": "assistant", "content": answer})
+                            st.session_state.used_context = used_context
+                            st.session_state.shopping_cart = shopping_cart
+                            st.session_state.trace_id = trace_id
 
-                        st.session_state.latest_feedback = None
-                        st.session_state.show_feedback_box = False
-                        st.session_state.feedback_submission_status = None
+                            st.session_state.latest_feedback = None
+                            st.session_state.show_feedback_box = False
+                            st.session_state.feedback_submission_status = None
 
-                        status_placeholder.empty()
-                        message_placeholder.markdown(answer)
-                        break
-                except json.JSONDecodeError:
-                    status_placeholder.markdown(f"*{data}*")
+                            status_placeholder.empty()
+                            message_placeholder.markdown(answer)
+                            break
+                    except json.JSONDecodeError:
+                        status_placeholder.markdown(f"*{data}*")
+        else:
+            error_msg = stream.get("message") or "Unknown error occurred"
+            status_placeholder.empty()
+            st.error(f"Error: {error_msg}")
 
         # success, response_data = api_call("POST", f"{config.API_URL}/rag/", json={
         #     "query": prompt,

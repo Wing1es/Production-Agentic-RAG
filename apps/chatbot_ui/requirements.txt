@@ -3,3 +3,4 @@ google-genai
 groq
 pydantic-settings
 langsmith
+requests
