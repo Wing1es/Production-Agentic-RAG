@@ -35,6 +35,7 @@ class State(BaseModel):
     user_intent: str = ""
     product_qa_agent: AgentProperties = Field(default_factory=AgentProperties)
     shopping_cart_agent: AgentProperties = Field(default_factory=AgentProperties)
+    warehouse_manager_agent: AgentProperties = Field(default_factory=AgentProperties)
     coordinator_agent: CoordinatorAgentProperties = Field(default_factory=CoordinatorAgentProperties)
     answer: str = ""
     references: Annotated[List[RAGUsedContext], add] = []
@@ -54,6 +55,11 @@ class CoordinatorAgentResponse(BaseModel):
     answer: str
 
 class ShoppingCartAgentResponse(BaseModel):
+    answer: str = Field(description="Answer to the question")
+    final_answer: bool = False
+    tool_calls: List[ToolCall] = []
+
+class WarehouseManagerAgentResponse(BaseModel):
     answer: str = Field(description="Answer to the question")
     final_answer: bool = False
     tool_calls: List[ToolCall] = []

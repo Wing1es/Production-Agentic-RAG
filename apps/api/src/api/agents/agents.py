@@ -5,7 +5,7 @@ import instructor
 from langsmith import traceable, get_current_run_tree
 
 from api.core.config import config
-from api.agents.models import ProductQAAgentResponse, State, CoordinatorAgentResponse, ShoppingCartAgentResponse
+from api.agents.models import ProductQAAgentResponse, State, CoordinatorAgentResponse, ShoppingCartAgentResponse, WarehouseManagerAgentResponse
 from api.agents.utils.prompt_management import prompt_template_config
 from api.agents.utils.utils import format_ai_message
 
@@ -177,4 +177,55 @@ def coordinator_agent(state: State) -> dict:
             "plan": response.plan
         },
         "trace_id": trace_id
+    }
+
+@traceable(
+    name="warehouse_manager_agent",
+    run_type="llm",
+    metadata={"ls_provider": "ollama", "ls_model_name": "llama3.1"}
+)
+def warehouse_manager_agent(state: State) -> dict:
+
+    template = prompt_template_config(PROMPTS_DIR / "warehouse_manager_agent.yaml", "warehouse_manager_agent")
+
+    prompt = template.render(
+        available_tools=state.warehouse_manager_agent.available_tools,
+    )
+
+    messages = state.messages
+
+    conversation = []
+
+    for message in messages:
+        conversation.append(convert_to_openai_messages(message))
+
+    from openai import OpenAI
+    client = instructor.from_openai(
+        OpenAI(
+            api_key="ollama",
+            base_url="http://localhost:11434/v1"
+        ),
+        mode=instructor.Mode.JSON
+    )
+
+    response, raw_response = client.chat.completions.create_with_completion(
+        model="llama3.1",
+        response_model=WarehouseManagerAgentResponse,
+        messages=[
+            {"role": "system", "content": prompt}, *conversation
+        ],
+        temperature=0.5,
+    )
+ 
+    ai_message = format_ai_message(response)
+
+    return {
+        "messages": [ai_message],
+        "answer": response.answer,
+        "warehouse_manager_agent": {
+            "tool_calls": [tool_call.model_dump() for tool_call in response.tool_calls],
+            "iteration": state.warehouse_manager_agent.iteration + 1,
+            "final_answer": response.final_answer,
+            "available_tools": state.warehouse_manager_agent.available_tools
+        }
     }

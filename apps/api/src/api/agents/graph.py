@@ -9,8 +9,8 @@ from langgraph.types import StreamMode
 from api.core.config import config
 from api.agents.models import State
 from api.agents.utils.utils import get_tool_description
-from api.agents.tools import get_formatted_context, get_formatted_review_context, add_to_shopping_cart, get_shopping_cart, remove_from_cart
-from api.agents.agents import product_qa_agent, shopping_cart_agent, coordinator_agent
+from api.agents.tools import get_formatted_context, get_formatted_review_context, add_to_shopping_cart, get_shopping_cart, remove_from_cart, check_warehouse_availability, reserve_warehouse_items
+from api.agents.agents import product_qa_agent, shopping_cart_agent, coordinator_agent, warehouse_manager_agent
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
 
@@ -49,6 +49,17 @@ def coordinator_agent_edge(state: State):
     else:
         return "END"
 
+def warehouse_manager_agent_edge(state: State):
+
+    if state.warehouse_manager_agent.final_answer:
+        return "END"
+    elif state.warehouse_manager_agent.iteration > 3:
+        return "END"
+    elif len(state.warehouse_manager_agent.tool_calls) > 0:
+        return "tools"
+    else:
+        return "END"
+
 workflow = StateGraph(State)
 
 product_qa_agent_tools = [get_formatted_context, get_formatted_review_context]
@@ -59,19 +70,27 @@ shopping_cart_agent_tools = [add_to_shopping_cart, remove_from_cart, get_shoppin
 shopping_cart_agent_tool_node = ToolNode(shopping_cart_agent_tools)
 shopping_cart_agent_tool_description = get_tool_description(shopping_cart_agent_tools)
 
+warehouse_manager_agent_tools = [check_warehouse_availability, reserve_warehouse_items]
+warehouse_manager_agent_tool_node = ToolNode(warehouse_manager_agent_tools)
+warehouse_manager_agent_tool_description = get_tool_description(warehouse_manager_agent_tools)
+
 workflow.add_node("coordinator_agent", coordinator_agent)
 workflow.add_node("product_qa_agent", product_qa_agent)
 workflow.add_node("shopping_cart_agent", shopping_cart_agent)
+workflow.add_node("warehouse_manager_agent", warehouse_manager_agent)
 
 workflow.add_node("product_qa_agent_tool_node", product_qa_agent_tool_node)
 workflow.add_node("shopping_cart_agent_tool_node", shopping_cart_agent_tool_node)
+workflow.add_node("warehouse_manager_agent_tool_node", warehouse_manager_agent_tool_node)
 
 workflow.add_edge(START, "coordinator_agent")
-workflow.add_conditional_edges("coordinator_agent", coordinator_agent_edge, {"product_qa_agent": "product_qa_agent", "shopping_cart_agent": "shopping_cart_agent", "END": END})
+workflow.add_conditional_edges("coordinator_agent", coordinator_agent_edge, {"product_qa_agent": "product_qa_agent", "shopping_cart_agent": "shopping_cart_agent", "warehouse_manager_agent": "warehouse_manager_agent", "END": END})
 workflow.add_conditional_edges("product_qa_agent", product_qa_agent_tool_router, {"tools": "product_qa_agent_tool_node", "end": "coordinator_agent"})
 workflow.add_conditional_edges("shopping_cart_agent", shopping_cart_agent_tool_router, {"tools": "shopping_cart_agent_tool_node", "end": "coordinator_agent"})
+workflow.add_conditional_edges("warehouse_manager_agent", warehouse_manager_agent_edge, {"tools": "warehouse_manager_agent_tool_node", "END": "coordinator_agent"})
 workflow.add_edge("product_qa_agent_tool_node", "product_qa_agent")
 workflow.add_edge("shopping_cart_agent_tool_node", "shopping_cart_agent")
+workflow.add_edge("warehouse_manager_agent_tool_node", "warehouse_manager_agent")
 
 def run_agent(question: str, thread_id: str)->dict:
     initial_state = State(
@@ -95,6 +114,12 @@ def run_agent(question: str, thread_id: str)->dict:
             "final_answer": False,
             "next_agent": "",
             "plan": []
+        },
+        warehouse_manager_agent={
+            "iteration": 0,
+            "final_answer": False,
+            "tool_calls": [],
+            "available_tools": warehouse_manager_agent_tool_description
         }
     )
 
@@ -180,6 +205,10 @@ def rag_agent_stream_wrapper(question: str, thread_id: str):
                 return f"Removing item from your shopping cart..."
             elif tool_name == "get_shopping_cart":
                 return f"Retrieving your shopping cart..."
+            elif tool_name == "check_warehouse_availability":
+                return f"Checking warehouse availability..."
+            elif tool_name == "reserve_warehouse_items":
+                return f"Reserving items in warehouse..."
 
             return f"Calling database tool {tool_name}..."
 
@@ -194,7 +223,10 @@ def rag_agent_stream_wrapper(question: str, thread_id: str):
             elif node_name == "shopping_cart_agent":
                 print("Updating shopping cart...")
                 return "Updating shopping cart..."
-            elif node_name in ("product_qa_agent_tool_node", "shopping_cart_agent_tool_node", "tool_node", "mcp_tool_node"):
+            elif node_name == "warehouse_manager_agent":
+                print("Checking warehouse details...")
+                return "Checking warehouse details..."
+            elif node_name in ("product_qa_agent_tool_node", "shopping_cart_agent_tool_node", "warehouse_manager_agent_tool_node", "tool_node", "mcp_tool_node"):
                 input_data = chunk[1].get("payload", {}).get("input")
                 tool_calls = []
                 if input_data:
