@@ -2,6 +2,7 @@ from pathlib import Path
 from langchain_core.messages import convert_to_openai_messages, AIMessage
 from groq import Groq
 import instructor
+from litellm import completion
 from langsmith import traceable, get_current_run_tree
 
 from api.core.config import config
@@ -16,13 +17,13 @@ PROMPTS_DIR = Path(__file__).parent / "prompts"
     run_type="llm",
     metadata={"ls_provider": "groq", "ls_model_name": "llama-3.3-70b-versatile"}
 )
-def product_qa_agent(state: State) -> dict:
+def product_qa_agent(state: State, models=["groq/llama-3.3-70b-versatile", "google/gemini-2.5-flash"]) -> dict:
 
-    template = prompt_template_config(PROMPTS_DIR / "qa_agent.yaml", "qa_agent")
-
-    prompt = template.render(
-        available_tools=state.product_qa_agent.available_tools
-    )
+    prompts = {}
+    for model in models:
+        prompts[model] = prompt_template_config(PROMPTS_DIR / "qa_agent.yaml", model).render(
+            available_tools=state.product_qa_agent.available_tools
+        )
 
     messages = state.messages
 
@@ -31,20 +32,37 @@ def product_qa_agent(state: State) -> dict:
     for message in messages:
         conversation.append(convert_to_openai_messages(message))
 
-    client = instructor.from_groq(Groq(api_key=config.GROQ_API_KEY), mode=instructor.Mode.JSON)
+    client = instructor.from_litellm(completion=completion)
 
-    response, raw_response = client.chat.completions.create_with_completion(
-        model="llama-3.3-70b-versatile",
-        response_model=ProductQAAgentResponse,
-        messages=[
-            {"role": "system", "content": prompt}, *conversation
-        ],
-        temperature=0.5,
-    )
+    response = raw_response = None
+    for model in models:
+        try:
+            response, raw_response = client.chat.completions.create_with_completion(
+                model=model,
+                response_model=ProductQAAgentResponse,
+                messages=[
+                    {"role": "system", "content": prompts[model]}, *conversation
+                ],
+                temperature=0.5,
+            )
+            break
+        except Exception as e:
+            print(f"Error calling {model}: {e}")
+            continue
+    
+    if not response:
+        raise Exception("Failed to get response from any model")
+    
+    if not raw_response:
+        raise Exception("Failed to get raw response from any model")
 
     run_tree = get_current_run_tree()
 
     if run_tree:
+        if "/" in model:
+            provider, model_name = model.split("/", 1)
+            run_tree.metadata["ls_provider"] = provider
+            run_tree.metadata["ls_model_name"] = model_name
         run_tree.metadata["usage_metadata"] = {
             "input_tokens": raw_response.usage.prompt_tokens,
             "output_tokens": raw_response.usage.completion_tokens,
@@ -70,15 +88,15 @@ def product_qa_agent(state: State) -> dict:
     run_type="llm",
     metadata={"ls_provider": "groq", "ls_model_name": "llama-3.3-70b-versatile"}
 )
-def shopping_cart_agent(state: State) -> dict:
+def shopping_cart_agent(state: State, models=["groq/llama-3.3-70b-versatile", "google/gemini-2.5-flash"]) -> dict:
 
-    template = prompt_template_config(PROMPTS_DIR / "shopping_cart_agent.yaml", "shopping_cart_agent")
-
-    prompt = template.render(
-        available_tools=state.shopping_cart_agent.available_tools,
-        user_id=state.user_id,
-        cart_id=state.cart_id
-    )
+    prompts = {}
+    for model in models:
+        prompts[model] = prompt_template_config(PROMPTS_DIR / "shopping_cart_agent.yaml", model).render(
+            available_tools=state.shopping_cart_agent.available_tools,
+            user_id=state.user_id,
+            cart_id=state.cart_id
+        )
 
     messages = state.messages
 
@@ -87,20 +105,37 @@ def shopping_cart_agent(state: State) -> dict:
     for message in messages:
         conversation.append(convert_to_openai_messages(message))
 
-    client = instructor.from_groq(Groq(api_key=config.GROQ_API_KEY), mode=instructor.Mode.JSON)
+    client = instructor.from_litellm(completion=completion)
 
-    response, raw_response = client.chat.completions.create_with_completion(
-        model="llama-3.3-70b-versatile",
-        response_model=ShoppingCartAgentResponse,
-        messages=[
-            {"role": "system", "content": prompt}, *conversation
-        ],
-        temperature=0.5,
-    )
+    response = raw_response = None
+    for model in models:
+        try:
+            response, raw_response = client.chat.completions.create_with_completion(
+                model=model,
+                response_model=ShoppingCartAgentResponse,
+                messages=[
+                    {"role": "system", "content": prompts[model]}, *conversation
+                ],
+                temperature=0.5,
+            )
+            break
+        except Exception as e:
+            print(f"Error calling {model}: {e}")
+            continue
+    
+    if not response:
+        raise Exception("Failed to get response from any model")
+    
+    if not raw_response:
+        raise Exception("Failed to get raw response from any model")
 
     run_tree = get_current_run_tree()
 
     if run_tree:
+        if "/" in model:
+            provider, model_name = model.split("/", 1)
+            run_tree.metadata["ls_provider"] = provider
+            run_tree.metadata["ls_model_name"] = model_name
         run_tree.metadata["usage_metadata"] = {
             "input_tokens": raw_response.usage.prompt_tokens,
             "output_tokens": raw_response.usage.completion_tokens,
@@ -127,11 +162,11 @@ def shopping_cart_agent(state: State) -> dict:
     run_type="llm",
     metadata={"ls_provider": "groq", "ls_model_name": "llama-3.3-70b-versatile"}
 )
-def coordinator_agent(state: State) -> dict:
+def coordinator_agent(state: State, models=["groq/llama-3.3-70b-versatile", "google/gemini-2.5-flash"]) -> dict:
 
-    template = prompt_template_config(PROMPTS_DIR / "coordinator_agent.yaml", "coordinator_agent")
-
-    prompt = template.render()
+    prompts = {}
+    for model in models:
+        prompts[model] = prompt_template_config(PROMPTS_DIR / "coordinator_agent.yaml", model).render()
 
     messages = state.messages
 
@@ -140,17 +175,34 @@ def coordinator_agent(state: State) -> dict:
     for message in messages:
         conversation.append(convert_to_openai_messages(message))
 
-    client = instructor.from_groq(Groq(api_key=config.GROQ_API_KEY), mode=instructor.Mode.JSON)
+    client = instructor.from_litellm(completion=completion)
 
-    response, raw_response = client.chat.completions.create_with_completion(
-        response_model=CoordinatorAgentResponse,
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "system", "content": prompt}, *conversation]
-    )
+    response = raw_response = None
+    for model in models:
+        try:
+            response, raw_response = client.chat.completions.create_with_completion(
+                model=model,
+                response_model=CoordinatorAgentResponse,
+                messages=[{"role": "system", "content": prompts[model]}, *conversation]
+            )
+            break
+        except Exception as e:
+            print(f"Error calling {model}: {e}")
+            continue
+    
+    if not response:
+        raise Exception("Failed to get response from any model")
+    
+    if not raw_response:
+        raise Exception("Failed to get raw response from any model")
 
     run_tree = get_current_run_tree()
 
     if run_tree:
+        if "/" in model:
+            provider, model_name = model.split("/", 1)
+            run_tree.metadata["ls_provider"] = provider
+            run_tree.metadata["ls_model_name"] = model_name
         run_tree.metadata["usage_metadata"] = {
             "input_tokens": raw_response.usage.prompt_tokens,
             "output_tokens": raw_response.usage.completion_tokens,
@@ -184,13 +236,13 @@ def coordinator_agent(state: State) -> dict:
     run_type="llm",
     metadata={"ls_provider": "ollama", "ls_model_name": "llama3.1"}
 )
-def warehouse_manager_agent(state: State) -> dict:
+def warehouse_manager_agent(state: State, models=["ollama/llama3.1"]) -> dict:
 
-    template = prompt_template_config(PROMPTS_DIR / "warehouse_manager_agent.yaml", "warehouse_manager_agent")
-
-    prompt = template.render(
-        available_tools=state.warehouse_manager_agent.available_tools,
-    )
+    prompts = {}
+    for model in models:
+        prompts[model] = prompt_template_config(PROMPTS_DIR / "warehouse_manager_agent.yaml", model).render(
+            available_tools=state.warehouse_manager_agent.available_tools,
+        )
 
     messages = state.messages
 
@@ -198,25 +250,44 @@ def warehouse_manager_agent(state: State) -> dict:
 
     for message in messages:
         conversation.append(convert_to_openai_messages(message))
-
-    from openai import OpenAI
-    client = instructor.from_openai(
-        OpenAI(
-            api_key="ollama",
-            base_url="http://localhost:11434/v1"
-        ),
-        mode=instructor.Mode.JSON
-    )
-
-    response, raw_response = client.chat.completions.create_with_completion(
-        model="llama3.1",
-        response_model=WarehouseManagerAgentResponse,
-        messages=[
-            {"role": "system", "content": prompt}, *conversation
-        ],
-        temperature=0.5,
-    )
  
+    client = instructor.from_litellm(completion=completion)
+
+    response = raw_response = None
+    for model in models:
+        try:
+            response, raw_response = client.chat.completions.create_with_completion(
+                model=model,
+                response_model=WarehouseManagerAgentResponse,
+                messages=[
+                    {"role": "system", "content": prompts[model]}, *conversation
+                ],
+                temperature=0.5,
+            )
+            break
+        except Exception as e:
+            print(f"Error calling {model}: {e}")
+            continue
+    
+    if not response:
+        raise Exception("Failed to get response from any model")
+    
+    if not raw_response:
+        raise Exception("Failed to get raw response from any model")
+ 
+    run_tree = get_current_run_tree()
+
+    if run_tree:
+        if "/" in model:
+            provider, model_name = model.split("/", 1)
+            run_tree.metadata["ls_provider"] = provider
+            run_tree.metadata["ls_model_name"] = model_name
+        run_tree.metadata["usage_metadata"] = {
+            "input_tokens": raw_response.usage.prompt_tokens,
+            "output_tokens": raw_response.usage.completion_tokens,
+            "total_tokens": raw_response.usage.total_tokens
+        }
+
     ai_message = format_ai_message(response)
 
     return {
