@@ -420,7 +420,7 @@ def check_warehouse_availability(items: list[dict]) -> dict:
     
     Args:
         items: A list of items to check. Each item is a dictionary with keys: product_id, quantity.
-        
+
     Returns:
         A dictionary containing:
         - can_fulfill_completely: bool indicating if all items can be fulfilled from at least one warehouse
@@ -564,10 +564,10 @@ def reserve_warehouse_items(reservations: list[dict]) -> dict:
     
     Args:
         reservations: A list of reservations. Each reservation is a dictionary with keys:
-                     - warehouse_id: The warehouse to reserve from
-                     - product_id: The product to reserve
-                     - quantity: The quantity to reserve
-        
+                     - warehouse_id - The warehouse to reserve from
+                     - product_id - The product to reserve
+                     - quantity - The quantity to reserve
+
     Returns:
         A dictionary containing:
         - success: bool indicating if all reservations were successful
