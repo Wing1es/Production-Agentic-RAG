@@ -129,6 +129,40 @@ if "feedback_submission_status" not in st.session_state:
 if "trace_id" not in st.session_state:
     st.session_state.trace_id = None
 
+if "hitl_data" not in st.session_state:
+    st.session_state.hitl_data = None
+
+if "resume_action" not in st.session_state:
+    st.session_state.resume_action = None
+
+@st.dialog("Confirm Add to Cart")
+def add_to_cart_dialog():
+    items = st.session_state.hitl_data
+    st.write("Do you want to add the following items to your cart?")
+    if isinstance(items, list):
+        for item in items:
+            st.write(f"- {item.get('name', 'Item')} (Qty: {item.get('quantity', 1)})")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Confirm"):
+            st.session_state.resume_action = {
+                "confirmed": True,
+                "modified_items": st.session_state.hitl_data
+            }
+            st.session_state.hitl_data = None
+            st.rerun()
+    with col2:
+        if st.button("Cancel"):
+            st.session_state.resume_action = {
+                "confirmed": False
+            }
+            st.session_state.hitl_data = None
+            st.rerun()
+
+if st.session_state.hitl_data is not None:
+    add_to_cart_dialog()
+
 with st.sidebar:
     suggestions_tab, shopping_cart_tab = st.tabs(["Suggestions", "Shopping Cart"])
 
@@ -266,6 +300,47 @@ for idx, message in enumerate(st.session_state.messages):
                         st.session_state.show_feedback_box = False
                         st.rerun()
 
+def handle_agent_stream(success, stream, status_placeholder, message_placeholder):
+    if success:
+        for line in stream:
+            line_text = line.decode("utf-8")
+
+            if line_text.startswith("data: "):
+                data = line_text[6:]
+                
+                try:
+                    output = json.loads(data)
+
+                    if output["type"] == "final_answer":
+                        answer = output["data"]["answer"]
+                        used_context = output["data"]["used_context"]
+                        shopping_cart = output["data"]["shopping_cart"]
+                        trace_id = output["data"]["trace_id"]
+                        
+                        st.session_state.messages.append({"role": "assistant", "content": answer})
+                        st.session_state.used_context = used_context
+                        st.session_state.shopping_cart = shopping_cart
+                        st.session_state.trace_id = trace_id
+
+                        st.session_state.latest_feedback = None
+                        st.session_state.show_feedback_box = False
+                        st.session_state.feedback_submission_status = None
+
+                        status_placeholder.empty()
+                        message_placeholder.markdown(answer)
+                        break
+                    elif output["type"] == "interupt":
+                        items_to_add = output["data"]["data"].get("items_to_add")
+                        st.session_state.hitl_data = items_to_add
+                        status_placeholder.empty()
+                        break
+                except json.JSONDecodeError:
+                    status_placeholder.markdown(f"*{data}*")
+    else:
+        error_msg = stream.get("message") or "Unknown error occurred"
+        status_placeholder.empty()
+        st.error(f"Error: {error_msg}")
+
 if prompt := st.chat_input("Ask Anything"):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -280,40 +355,7 @@ if prompt := st.chat_input("Ask Anything"):
             "thread_id": session_id
         }, stream=True, headers={"Accept": "text/event-stream"})
 
-        if success:
-            for line in stream:
-                line_text = line.decode("utf-8")
-
-                if line_text.startswith("data: "):
-                    data = line_text[6:]
-                    
-                    try:
-                        output = json.loads(data)
-
-                        if output["type"] == "final_answer":
-                            answer = output["data"]["answer"]
-                            used_context = output["data"]["used_context"]
-                            shopping_cart = output["data"]["shopping_cart"]
-                            trace_id = output["data"]["trace_id"]
-                            
-                            st.session_state.messages.append({"role": "assistant", "content": answer})
-                            st.session_state.used_context = used_context
-                            st.session_state.shopping_cart = shopping_cart
-                            st.session_state.trace_id = trace_id
-
-                            st.session_state.latest_feedback = None
-                            st.session_state.show_feedback_box = False
-                            st.session_state.feedback_submission_status = None
-
-                            status_placeholder.empty()
-                            message_placeholder.markdown(answer)
-                            break
-                    except json.JSONDecodeError:
-                        status_placeholder.markdown(f"*{data}*")
-        else:
-            error_msg = stream.get("message") or "Unknown error occurred"
-            status_placeholder.empty()
-            st.error(f"Error: {error_msg}")
+        handle_agent_stream(success, stream, status_placeholder, message_placeholder)
 
         # success, response_data = api_call("POST", f"{config.API_URL}/rag/", json={
         #     "query": prompt,
@@ -334,4 +376,21 @@ if prompt := st.chat_input("Ask Anything"):
         #     error_msg = response_data.get("message") or "Unknown error occurred"
         #     st.error(error_msg)
     
+    st.rerun()
+
+elif st.session_state.resume_action is not None:
+    resume_data = st.session_state.resume_action
+    st.session_state.resume_action = None
+    
+    with st.chat_message("assistant"):
+        status_placeholder = st.empty()
+        message_placeholder = st.empty()
+        
+        success, stream = api_call_stream("POST", f"{config.API_URL}/agent/", json={
+            "thread_id": session_id,
+            "resume_data": resume_data
+        }, stream=True, headers={"Accept": "text/event-stream"})
+        
+        handle_agent_stream(success, stream, status_placeholder, message_placeholder)
+        
     st.rerun()

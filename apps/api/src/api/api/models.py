@@ -5,6 +5,10 @@ class RAGRequest(BaseModel):
     query: str = Field(..., description="The query to be answered") 
     thread_id: str = Field(..., description="The ID of the thread")
 
+class HITLRequest(BaseModel):
+    thread_id: str = Field(..., description="The ID of the thread")
+    resume_data: dict = Field(..., description="Data to resume the graph after an interrupt")
+
 class RAGUsedContext(BaseModel):
     image_url: str = Field(..., description="The URL of the image of the item")
     price: Optional[float] = Field(..., description="Price of the item")

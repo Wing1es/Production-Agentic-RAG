@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  pull_request:
+  branches: [main]
+  types: [opened, synchronize, reopened]
+
+concurency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  run_evaluation:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+
+    name: Eval Qualti Gate
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.13'
+        cache: pip
+
+    - name: Install dependencies
+      run: pip install -r apps/api/requirements.txt
+
+    - name: Run Evaluations
+      id: run-evals
+      env:
+        LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+        GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        PYTHONPATH: ${{github.workspace}}/apps/api/src/:${{github.workspace}}/apps/api/
+      run:  |
+        cd apps/api/src python -m evals.eval_coordinator_agent

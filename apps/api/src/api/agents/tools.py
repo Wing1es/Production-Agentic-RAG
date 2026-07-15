@@ -232,9 +232,6 @@ def add_to_shopping_cart(items: list[dict], user_id: str, cart_id: str) -> str:
             Each dictionary should contain:
                 - 'product_id' (str): The ID of the product (required).
                 - 'quantity' (int): The quantity to add (optional, defaults to 1).
-                - 'price' (float/Decimal): The unit price of the item (optional).
-                - 'currency' (str): The 3-character currency code (optional, e.g., 'USD').
-                - 'product_image_url' (str): URL to the product image (optional).
         user_id (str): The unique identifier of the user.
         cart_id (str): The ID of the shopping cart (e.g., 'main').
 

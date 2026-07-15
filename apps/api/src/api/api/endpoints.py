@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from .models import RAGRequest, RAGResponse, RAGUsedContext
 from api.agents.graph import agent_wrapper, rag_agent_stream_wrapper
 from api.api.processors.submit_feedback import submit_feedback
-from api.api.models import FeedbackRequest, FeedbackResponse
+from api.api.models import FeedbackRequest, FeedbackResponse, HITLRequest
 
 import logging
 
@@ -30,7 +30,7 @@ def chat(request: Request, payload: RAGRequest) -> StreamingResponse:
     # logger.info(f"LLM Response: {response['answer']}")
 
     return StreamingResponse(
-        rag_agent_stream_wrapper(payload.query, payload.thread_id),
+        rag_agent_stream_wrapper(question=payload.query, thread_id=payload.thread_id),
         media_type="text/event-stream"
     )
     # return RAGResponse(
@@ -39,6 +39,14 @@ def chat(request: Request, payload: RAGRequest) -> StreamingResponse:
     #     used_context=[RAGUsedContext(**item) for item in response["used_context"]],
     #     trace_id=response["trace_id"]
     # )
+
+@rag_router.post("/hitl_response")
+def hitl_response(request: Request, payload: HITLRequest) -> StreamingResponse:
+    logger.info(f"Received HITL response: {payload}")
+    return StreamingResponse(
+        rag_agent_stream_wrapper(question="", thread_id=payload.thread_id, resume_data=payload.resume_data),
+        media_type="text/event-stream"
+    )
 
 @feedback_router.post("/")
 def send_feedback(request: Request, payload: FeedbackRequest):
